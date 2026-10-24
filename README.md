@@ -5,7 +5,7 @@ A deep learning application that classifies plant leaf images into 33 supported 
 
 ## 🚀 Live Demo
 
-**Streamlit App:** Add your deployed Streamlit URL here.
+**Streamlit App:** Add your deployed Streamlit URL here.(https://opencv-based-plant-disease-prediction-94x8pgxvqilpvvbxq74u5k.streamlit.app/)
 
 ## 📌 Project Overview
 
