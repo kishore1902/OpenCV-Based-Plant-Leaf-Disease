@@ -1,4 +1,8 @@
-tensorflow
-streamlit
-numpy
+
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+tensorflow-cpu==2.15.1
+numpy<2
 Pillow
