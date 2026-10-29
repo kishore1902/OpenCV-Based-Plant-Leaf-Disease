@@ -1,0 +1,152 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#123c2d">
+
+    <title>PlantCare AI | Plant Disease Detection</title>
+    <meta
+        name="description"
+        content="Identify plant leaf diseases using a deep learning model."
+    >
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/script.js" defer></script>
+</head>
+
+<body>
+    <header class="navbar">
+        <a class="brand" href="/">
+            <span class="brand-icon">✳</span>
+            <span>PlantCare<span class="brand-highlight"> AI</span></span>
+        </a>
+        <span class="nav-label">AI-powered plant health</span>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="eyebrow">
+                <span class="status-dot"></span>
+                DEEP LEARNING · DENSENET121
+            </div>
+
+            <h1>A healthier plant<br>starts with <span>one leaf.</span></h1>
+
+            <p class="hero-description">
+                Upload a plant leaf image and let AI analyze it
+                to identify the most likely disease.
+            </p>
+        </section>
+
+        <section class="workspace">
+            <div class="panel upload-panel">
+                <div class="section-heading">
+                    <div>
+                        <p class="step-label">STEP 01</p>
+                        <h2>Upload your leaf</h2>
+                    </div>
+                    <span class="heading-icon">↥</span>
+                </div>
+
+                <label class="drop-zone" id="drop-zone" for="image-input">
+                    <input
+                        id="image-input"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        hidden
+                    >
+
+                    <div id="upload-placeholder" class="upload-placeholder">
+                        <div class="upload-icon">↑</div>
+                        <h3>Drop your image here</h3>
+                        <p>or <span class="browse-link">browse files</span></p>
+                        <span class="file-hint">JPG, PNG or WEBP · Max 10 MB</span>
+                    </div>
+
+                    <div id="preview-container" class="preview-container" hidden>
+                        <img id="image-preview" alt="Selected plant leaf preview">
+                        <span class="change-image">Choose another image</span>
+                    </div>
+                </label>
+
+                <div class="image-tip">
+                    <span>✦</span>
+                    <p>For best results, use a clear, well-lit image of a leaf.</p>
+                </div>
+
+                <button id="predict-button" class="primary-button" disabled>
+                    <span id="button-text">Analyze leaf</span>
+                    <span aria-hidden="true">→</span>
+                </button>
+
+                <p id="error-message" class="error-message" role="alert"></p>
+            </div>
+
+            <div class="panel results-panel" aria-live="polite">
+                <div class="section-heading">
+                    <div>
+                        <p class="step-label">STEP 02</p>
+                        <h2>Analysis results</h2>
+                    </div>
+                    <span class="heading-icon">⌁</span>
+                </div>
+
+                <div id="empty-state" class="empty-state">
+                    <div class="leaf-art" aria-hidden="true">
+                        <span>❋</span>
+                    </div>
+                    <h3>Your results will appear here</h3>
+                    <p>Upload a leaf image and select Analyze leaf to see the prediction.</p>
+                    <div class="empty-tags">
+                        <span>Disease detection</span>
+                        <span>Top 3 matches</span>
+                    </div>
+                </div>
+
+                <div id="loading-state" class="loading-state" hidden>
+                    <div class="loader"></div>
+                    <h3>Analyzing your leaf</h3>
+                    <p>Running the image through DenseNet121...</p>
+                </div>
+
+                <div id="result-state" hidden>
+                    <div class="result-label">MOST LIKELY MATCH</div>
+                    <h3 id="predicted-class" class="predicted-class"></h3>
+
+                    <div class="confidence-card">
+                        <div>
+                            <span class="confidence-label">Prediction confidence</span>
+                            <p class="confidence-note">Model probability, not a guarantee</p>
+                        </div>
+                        <strong id="confidence-value">0%</strong>
+                    </div>
+
+                    <div class="results-divider"></div>
+
+                    <h3 class="top-title">Top predictions</h3>
+                    <p class="top-description">Ranked by model probability</p>
+
+                    <div id="top-predictions" class="prediction-list"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="notice">
+            <span class="notice-icon">ⓘ</span>
+            <p>
+                <strong>Important:</strong> Predictions are based on the model's
+                training classes. Results may be unreliable for unfamiliar plants,
+                poor-quality images, or conditions outside the training dataset.
+                Consult an agricultural expert before taking treatment decisions.
+            </p>
+        </section>
+    </main>
+
+    <footer>
+        <span>PlantCare AI</span>
+        <span>Powered by DenseNet121 · TensorFlow</span>
+    </footer>
+</body>
+</html>
