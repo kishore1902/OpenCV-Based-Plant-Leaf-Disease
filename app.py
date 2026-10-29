@@ -14,6 +14,11 @@ from PIL import Image, UnidentifiedImageError
 from starlette.requests import Request
 from tensorflow.keras.applications.densenet import preprocess_input
 
+import keras
+
+print("TensorFlow version:", tf.__version__)
+print("Keras version:", keras.__version__)
+
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "best_densenet121_model.keras"
 CLASS_NAMES_PATH = BASE_DIR / "class_names.json"
