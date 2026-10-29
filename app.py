@@ -1,61 +1,57 @@
 
 import json
+from functools import lru_cache
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
-import streamlit as st
 import tensorflow as tf
-from PIL import Image
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from PIL import Image, UnidentifiedImageError
+from starlette.requests import Request
 from tensorflow.keras.applications.densenet import preprocess_input
-
-
-# -----------------------------------
-# 1. Configuration
-# -----------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "best_densenet121_model.keras"
 CLASS_NAMES_PATH = BASE_DIR / "class_names.json"
-
 IMAGE_SIZE = (224, 224)
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
-st.set_page_config(
-    page_title="Plant Disease Detection",
-    page_icon="🌿",
-    layout="wide",
+app = FastAPI(
+    title="Plant Disease Detection API",
+    description="Plant leaf classification using DenseNet121",
+    version="1.0.0",
 )
 
-st.title("🌿 Plant Disease Detection")
-st.write(
-    "Upload a plant leaf image to predict its disease "
-    "using a trained DenseNet121 model."
+app.mount(
+    "/static",
+    StaticFiles(directory=str(BASE_DIR / "static")),
+    name="static",
 )
 
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# -----------------------------------
-# 2. Load the trained model
-# -----------------------------------
 
-@st.cache_resource
+@lru_cache(maxsize=1)
 def load_model():
+    """Load the trained model once and reuse it."""
     if not MODEL_PATH.is_file():
-        raise FileNotFoundError(
-            f"Model file not found: {MODEL_PATH.name}. "
-            "Check that the model is committed to your GitHub repository."
-        )
+        raise FileNotFoundError(f"Missing model: {MODEL_PATH.name}")
 
-    return tf.keras.models.load_model(
+    model = tf.keras.models.load_model(
         str(MODEL_PATH),
         compile=False,
     )
 
+    return model
 
-# -----------------------------------
-# 3. Load class names
-# -----------------------------------
 
-@st.cache_data
+@lru_cache(maxsize=1)
 def load_class_names():
+    """Load class names in the same order used during training."""
     if not CLASS_NAMES_PATH.is_file():
         raise FileNotFoundError(
             f"Missing file: {CLASS_NAMES_PATH.name}"
@@ -70,162 +66,126 @@ def load_class_names():
         or not all(isinstance(name, str) for name in names)
     ):
         raise ValueError(
-            "class_names.json must contain a non-empty list of class names."
+            "class_names.json must contain a non-empty list of strings."
         )
 
     return names
 
 
-# -----------------------------------
-# 4. Preprocess the uploaded image
-# -----------------------------------
-
-def preprocess_image(image):
+def preprocess_image(image: Image.Image) -> np.ndarray:
+    """Apply the same preprocessing used by the DenseNet121 model."""
     image = image.convert("RGB")
     image = image.resize(IMAGE_SIZE)
 
     image_array = np.asarray(image, dtype=np.float32)
     image_array = np.expand_dims(image_array, axis=0)
 
-    # Match DenseNet121 preprocessing used during training.
-    # Do not divide by 255 separately.
+    # Do not replace this with image_array / 255.0.
     image_array = preprocess_input(image_array)
 
     return image_array
 
 
-# -----------------------------------
-# 5. Predict the disease
-# -----------------------------------
-
-def predict_disease(model, image, class_names):
-    image_array = preprocess_image(image)
-
-    probabilities = model.predict(image_array, verbose=0)[0]
-
-    if len(probabilities) != len(class_names):
-        raise ValueError(
-            f"Model returns {len(probabilities)} predictions, "
-            f"but class_names.json contains {len(class_names)} classes."
-        )
-
-    if not np.all(np.isfinite(probabilities)):
-        raise ValueError("The model returned invalid prediction values.")
-
-    top_indices = np.argsort(probabilities)[::-1][:3]
-
-    predicted_index = int(top_indices[0])
-    predicted_class = class_names[predicted_index]
-    confidence = float(probabilities[predicted_index])
-
-    top_predictions = [
-        (class_names[int(index)], float(probabilities[index]))
-        for index in top_indices
-    ]
-
-    return predicted_class, confidence, top_predictions
-
-
-# -----------------------------------
-# 6. Load application resources
-# -----------------------------------
-
-try:
+def predict_disease(image: Image.Image):
     model = load_model()
     class_names = load_class_names()
 
     if model.output_shape[-1] != len(class_names):
-        st.error(
-            "The model output count does not match the class names. "
-            "Check the class order and model output."
+        raise ValueError(
+            "The model output count does not match class_names.json. "
+            "Check the class count and class order."
         )
-        st.stop()
 
-except Exception as error:
-    st.error(f"Could not load the model: {error}")
-    st.stop()
+    image_array = preprocess_image(image)
+    probabilities = model.predict(image_array, verbose=0)[0]
+
+    if (
+        len(probabilities) != len(class_names)
+        or not np.all(np.isfinite(probabilities))
+    ):
+        raise ValueError("The model returned invalid predictions.")
+
+    # Return up to three classes, ranked by predicted probability.
+    top_indices = np.argsort(probabilities)[::-1][
+        : min(3, len(class_names))
+    ]
+
+    predicted_index = int(top_indices[0])
+
+    return {
+        "predicted_class": class_names[predicted_index],
+        "confidence": float(probabilities[predicted_index]),
+        "top_predictions": [
+            {
+                "class_name": class_names[int(index)],
+                "probability": float(probabilities[index]),
+            }
+            for index in top_indices
+        ],
+    }
 
 
-# -----------------------------------
-# 7. Upload and predict
-# -----------------------------------
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={},
+    )
 
-uploaded_file = st.file_uploader(
-    "Upload a plant leaf image",
-    type=["jpg", "jpeg", "png", "webp"],
-)
 
-if uploaded_file is not None:
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Please select an image.",
+        )
+
+    contents = await file.read()
+
+    if not contents:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty.",
+        )
+
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="Image size must be 10 MB or less.",
+        )
+
     try:
-        image = Image.open(uploaded_file).convert("RGB")
+        # Verify that the uploaded content is a valid image.
+        with Image.open(BytesIO(contents)) as uploaded_image:
+            uploaded_image.verify()
 
-        # Reset the previous prediction when the upload changes.
-        current_file_id = (
-            f"{uploaded_file.name}_{uploaded_file.size}"
-        )
+        with Image.open(BytesIO(contents)) as uploaded_image:
+            image = uploaded_image.convert("RGB")
 
-        if st.session_state.get("file_id") != current_file_id:
-            st.session_state["file_id"] = current_file_id
-            st.session_state.pop("result", None)
+        result = predict_disease(image)
+        return result
 
-        left, right = st.columns(2)
+    except (UnidentifiedImageError, OSError, ValueError) as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not process the image: {error}",
+        ) from error
 
-        with left:
-            st.subheader("Uploaded image")
-            st.image(image, use_container_width=True)
-
-        with right:
-            st.subheader("Prediction")
-
-            if st.button(
-                "Predict Disease",
-                type="primary",
-                use_container_width=True,
-            ):
-                with st.spinner("Analyzing image..."):
-                    prediction = predict_disease(
-                        model,
-                        image,
-                        class_names,
-                    )
-
-                    st.session_state["result"] = {
-                        "file_id": current_file_id,
-                        "predicted_class": prediction[0],
-                        "confidence": prediction[1],
-                        "top_predictions": prediction[2],
-                    }
-
-        result = st.session_state.get("result")
-
-        if result and result["file_id"] == current_file_id:
-            st.divider()
-            st.subheader("Prediction Result")
-
-            st.success(
-                f"Predicted class: {result['predicted_class']}"
-            )
-
-            st.metric(
-                "Model confidence",
-                f"{result['confidence'] * 100:.2f}%",
-            )
-
-            st.subheader("Top 3 Predictions")
-
-            for name, probability in result["top_predictions"]:
-                st.write(
-                    f"**{name}** — {probability * 100:.2f}%"
-                )
-                st.progress(
-                    float(np.clip(probability, 0.0, 1.0))
-                )
-
-            st.caption(
-                "Confidence is the model's predicted probability, "
-                "not a guarantee of correctness. Results may be "
-                "unreliable for images outside the training classes."
-            )
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error),
+        ) from error
 
     except Exception as error:
-        st.error(f"Could not process this image: {error}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {error}",
+        ) from error
